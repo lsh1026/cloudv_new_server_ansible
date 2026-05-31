@@ -11,14 +11,17 @@
   changed_when: true # 멱등성을 위해 설치 명령이 돌았음을 표시
   when: ansible_distribution == 'Rocky'
 
+
+
 - name: Deploy vsftpd configuration
   ansible.builtin.template:
     src: "{{ 'vsftpd_ubuntu.conf.j2' if ansible_distribution == 'Ubuntu' else 'vsftpd_rocky.conf.j2' }}"
-    dest: /etc/vsftpd.conf
+    dest: "{{ '/etc/vsftpd.conf' if ansible_distribution == 'Ubuntu' else '/etc/vsftpd/vsftpd.conf' }}"
     owner: root
     group: root
     mode: '0644'
   notify: Restart vsftpd
+
 
 - name: Ensure vsftpd service enabled and started
   ansible.builtin.service:
