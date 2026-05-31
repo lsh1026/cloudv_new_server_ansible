@@ -1,0 +1,6 @@
+# Managed by Ansible
+pool {{ ntp_pool_server | default('time.bora.net') }} iburst
+
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony

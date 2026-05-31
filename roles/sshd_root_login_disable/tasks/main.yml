@@ -1,0 +1,26 @@
+---
+
+- name: Ensure /run/sshd directory exists for sshd validation
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  # 특정 OS 조건(when)을 빼버려서 Ubuntu, Rocky 모두에서 안전하게 디렉터리를 만들도록 합니다.
+
+
+
+- name: Disable root SSH login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin\s+'
+    line: 'PermitRootLogin no'
+    state: present
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: Restart SSH service
+
+- name: Ensure SSH service enabled
+  ansible.builtin.service:
+    name: "{{ ssh_service_name }}"
+    enabled: true

@@ -1,0 +1,37 @@
+---
+- name: Install vim on Ubuntu
+  ansible.builtin.apt:
+    name: vim
+    state: present
+    update_cache: true
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Install vim on Rocky
+  ansible.builtin.shell: dnf install -y vim
+  changed_when: true # 멱등성을 위해 설치 명령이 돌았음을 표시
+  when: ansible_distribution == 'Rocky'
+
+- name: Ensure vi alias exists on Ubuntu
+  ansible.builtin.lineinfile:
+    path: /etc/bash.bashrc
+    line: "alias vi='vim'"
+    state: present
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Ensure vi alias exists on Rocky
+  ansible.builtin.lineinfile:
+    path: /etc/bashrc
+    line: "alias vi='vim'"
+    state: present
+  when: ansible_distribution == 'Rocky'
+
+- name: Deploy global vimrc tuning
+  ansible.builtin.copy:
+    dest: /etc/vimrc.local
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      set ts=4
+      set encoding=utf-8
+      set fileencodings=utf-8,euc-kr

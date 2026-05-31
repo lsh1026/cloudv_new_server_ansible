@@ -1,0 +1,47 @@
+---
+- name: Validate privileged account input
+  ansible.builtin.assert:
+    that:
+      - privileged_username is defined
+      - privileged_username | length > 0
+      - privileged_password is defined
+      - privileged_password | length > 0
+    fail_msg: "privileged_username and privileged_password must be provided."
+
+- name: Ensure wheel group exists on Ubuntu
+  ansible.builtin.group:
+    name: wheel
+    state: present
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Ensure privileged account exists
+  ansible.builtin.user:
+    name: "{{ privileged_username }}"
+    state: present
+    create_home: true
+    shell: /bin/bash
+    password: "{{ privileged_password | password_hash('sha512') }}"
+    groups: "{{ 'sudo,wheel' if ansible_distribution == 'Ubuntu' else 'wheel' }}"
+    append: true
+
+- name: Allow wheel group for su on Ubuntu
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/su
+    regexp: '^#?auth\s+required\s+pam_wheel\.so.*group=wheel'
+    line: 'auth required pam_wheel.so debug group=wheel'
+    insertafter: EOF
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Allow wheel group for su on Rocky
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/su
+    regexp: '^#?auth\s+required\s+pam_wheel\.so\s+use_uid'
+    line: 'auth required pam_wheel.so use_uid'
+    insertafter: EOF
+  when: ansible_distribution == 'Rocky'
+
+- name: Restrict /bin/su group ownership
+  ansible.builtin.file:
+    path: /bin/su
+    group: wheel
+    mode: '4750'

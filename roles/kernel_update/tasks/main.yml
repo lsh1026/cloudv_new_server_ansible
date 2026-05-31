@@ -1,0 +1,54 @@
+---
+# =========================================================
+# Rocky Linux 8 / 9 / 10
+# =========================================================
+- name: Base setup for Rocky Linux 8/9/10
+  when:
+    - apply_base_setup | default(false) | bool
+    - ansible_distribution == 'Rocky'
+    - ansible_distribution_major_version | int >= 8
+    - ansible_distribution_major_version | int <= 10
+  block:
+
+    - name: Set locale to ko_KR.utf8
+      ansible.builtin.command: localectl set-locale LANG=ko_KR.utf8
+      changed_when: true
+
+    - name: Install epel-release
+      ansible.builtin.dnf:
+        name: epel-release
+        state: present
+
+    - name: Install remi-release for Rocky 8/9/10
+      ansible.builtin.dnf:
+        name: "https://rpms.remirepo.net/enterprise/remi-release-{{ ansible_distribution_major_version }}.rpm"
+        state: present
+
+    - name: Install rocky-release
+      ansible.builtin.dnf:
+        name: rocky-release
+        state: present
+
+    - name: Update package metadata and packages
+      ansible.builtin.dnf:
+        name: '*'
+        state: latest
+        update_cache: true
+
+
+# =========================================================
+# Ubuntu
+# =========================================================
+- name: Base setup for Ubuntu
+  when:
+    - apply_base_setup | default(false) | bool
+    - ansible_distribution == 'Ubuntu'
+  block:
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: dist

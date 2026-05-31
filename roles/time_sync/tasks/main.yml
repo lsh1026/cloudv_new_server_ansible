@@ -1,0 +1,183 @@
+---
+# =========================================================
+# CentOS 7 + Debian family
+# =========================================================
+- name: Apply rdate-based time sync for CentOS 7 and Debian family
+  when:
+    - apply_time_sync | default(false) | bool
+    - >
+      (ansible_os_family == 'RedHat' and ansible_distribution_major_version | int == 7)
+      or
+      (ansible_os_family == 'Debian')
+  block:
+
+    - name: Install rdate on CentOS 7
+      ansible.builtin.yum:
+        name:
+          - rdate
+          - net-tools
+          - zip
+          - unzip
+        state: present
+      when:
+        - ansible_os_family == 'RedHat'
+        - ansible_distribution_major_version | int == 7
+
+
+
+
+    - name: Pre-upgrade all packages on Ubuntu
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        lock_timeout: 1200
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      when: ansible_distribution == 'Ubuntu'
+
+
+
+    - name: Wait for apt lock to be released on Ubuntu
+      ansible.builtin.shell: |
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+          echo "Waiting for apt lock..."
+          sleep 5
+        done
+      async: 600  # 최대 10분 대기
+      poll: 5     # 5초마다 확인
+      when: ansible_distribution == 'Ubuntu'
+
+
+    - name: Install rdate on Debian family
+      ansible.builtin.apt:
+        name:
+          - rdate
+          - net-tools
+          - zip
+          - unzip
+        state: present
+        update_cache: true
+        lock_timeout: 300
+      when: ansible_os_family == 'Debian'
+
+    - name: Ensure /root/bin exists
+      ansible.builtin.file:
+        path: /root/bin
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy rdate time_sync.sh
+      ansible.builtin.copy:
+        dest: /root/bin/time_sync.sh
+        owner: root
+        group: root
+        mode: '0700'
+        content: |
+          #!/bin/bash
+          rdate -s time.bora.net && date && hwclock -r && hwclock -w > /dev/null 2>&1
+          exit 0;
+
+    - name: Ensure cron entry exists in /etc/crontab for rdate
+      ansible.builtin.lineinfile:
+        path: /etc/crontab
+        line: '0 * * * * root /bin/sh /root/bin/time_sync.sh'
+        state: present
+        insertafter: EOF
+
+    - name: Set dash to false on Debian family
+      ansible.builtin.debconf:
+        name: dash
+        question: dash/sh
+        value: 'false'
+        vtype: boolean
+      when: ansible_os_family == 'Debian'
+
+    - name: Reconfigure dash noninteractively
+      ansible.builtin.command: dpkg-reconfigure -f noninteractive dash
+      when: ansible_os_family == 'Debian'
+      changed_when: true
+
+
+# =========================================================
+# Rocky 8 / 9 / 10
+# =========================================================
+- name: Apply chrony-based time sync for Rocky 8/9/10
+  when:
+    - apply_time_sync | default(false) | bool
+    - ansible_distribution == 'Rocky'
+    - ansible_distribution_major_version | int >= 8
+  block:
+
+
+    - name: Pre-upgrade all packages on Rocky Linux
+      ansible.builtin.shell: dnf upgrade -y
+      changed_when: true
+      when: ansible_distribution == 'Rocky'
+
+
+    - name: Install chrony using raw shell
+      ansible.builtin.shell: dnf install -y chrony net-tools
+      changed_when: true # 멱등성을 위해 설치 명령이 돌았음을 표시
+
+    - name: Set timezone to Asia/Seoul
+      ansible.builtin.command: timedatectl set-timezone Asia/Seoul
+      changed_when: true
+
+    - name: Ensure chrony servers exist in /etc/chrony.conf
+      ansible.builtin.blockinfile:
+        path: /etc/chrony.conf
+        marker: "# {mark} ANSIBLE BORA NTP"
+        block: |
+          server time.bora.net iburst
+          server zero.bora.net iburst
+      notify: Restart chronyd
+
+    - name: Ensure /root/bin exists
+      ansible.builtin.file:
+        path: /root/bin
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy chrony time_sync.sh
+      ansible.builtin.copy:
+        dest: /root/bin/time_sync.sh
+        owner: root
+        group: root
+        mode: '0700'
+        content: |
+          #!/bin/bash
+          chronyc sources -v && hwclock -r && hwclock -w && hwclock -v > /dev/null 2>&1
+          exit 0;
+
+    - name: Ensure cron entry exists in /etc/crontab for chrony
+      ansible.builtin.lineinfile:
+        path: /etc/crontab
+        line: '0 * * * * root /bin/sh /root/bin/time_sync.sh'
+        state: present
+        insertafter: EOF
+
+
+# =========================================================
+# Final cron service handling
+# =========================================================
+- name: Restart and enable crond on RedHat family
+  when:
+    - apply_time_sync | default(false) | bool
+    - ansible_os_family == 'RedHat'
+  ansible.builtin.service:
+    name: crond
+    state: restarted
+    enabled: true
+
+- name: Restart and enable cron on Debian family
+  when:
+    - apply_time_sync | default(false) | bool
+    - ansible_os_family == 'Debian'
+  ansible.builtin.service:
+    name: cron
+    state: restarted
+    enabled: true

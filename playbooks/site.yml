@@ -1,0 +1,106 @@
+---
+
+# =================================================================
+# [PLAY 1] OS를 모르는 상태에서 Python3가 없다면 무조건 먼저 주입하는 단계
+# =================================================================
+
+- name: Pre-bootstrap modern Python3 for minimalist/legacy servers
+  hosts: all
+  gather_facts: false  # 여전히 팩트 수집은 꺼둡니다.
+  become: true
+
+  tasks:
+    - name: Ensure modern Python3 is installed
+      ansible.builtin.raw: |
+        if ! command -v python3 >/dev/null 2>&1 || [ $(python3 -c 'import sys; print(sys.version_info[1])') -lt 7 ]; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update && apt-get install -y python3
+          elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y python39 || dnf install -y python3
+          elif command -v yum >/dev/null 2>&1; then
+            # CentOS 7 같은 환경을 위해 EPEL 저장소와 python36보다 높은 버전을 시도합니다.
+            yum install -y epel-release && yum install -y python3
+          else
+            echo "Unsupported OS or missing package manager" >&2
+            exit 1
+          fi
+        fi
+      changed_when: false
+
+
+
+# =================================================================
+# [PLAY 2] 여기서부터 질문하신 기존 플레이북 내용이 시작됩니다.
+# =================================================================
+
+- name: New server baseline setup
+  hosts: all
+  gather_facts: true
+  become: true
+
+
+  vars_prompt:
+    - name: privileged_username
+      prompt: "Enter privileged username"
+      private: no
+
+    - name: privileged_password
+      prompt: "Enter privileged password"
+      private: yes
+      confirm: yes
+
+
+  pre_tasks:
+    - name: Validate supported OS family and versions
+      ansible.builtin.assert:
+        that:
+          - (ansible_distribution == 'Ubuntu' and (ansible_distribution_version is version('22.04', '>=') and ansible_distribution_version is version('26.04', '<='))) or
+            (ansible_distribution == 'Rocky' and (ansible_distribution_major_version | int >= 8 and ansible_distribution_major_version | int <= 10))
+        fail_msg: >-
+          Unsupported target. Supported targets: Ubuntu 22.04~26.04, Rocky Linux 8~10.
+
+    - name: Normalize SSH service name
+      ansible.builtin.set_fact:
+        ssh_service_name: "{{ 'ssh' if ansible_distribution == 'Ubuntu' else 'sshd' }}"
+
+    - name: Warn when iptables is requested on Rocky 10
+      ansible.builtin.debug:
+        msg: "iptables setup was requested but is intentionally skipped on Rocky Linux 10."
+      when:
+        - apply_iptables | default(false) | bool
+        - ansible_distribution == 'Rocky'
+        - ansible_distribution_major_version | int == 10
+
+  roles:
+    - role: time_sync
+      when: apply_time_sync | default(false) | bool
+
+    - role: history_profile
+      when: apply_history | default(false) | bool
+
+    - role: kernel_update
+      when:
+        - apply_kernel_update | default(false) | bool
+        - ansible_distribution == 'Rocky'
+
+    - role: vim_setup
+      when: apply_vim | default(false) | bool
+
+    - role: privileged_account
+      when: apply_privileged_account | default(false) | bool
+
+    - role: sshd_root_login_disable
+      when: apply_sshd_root_disable | default(false) | bool
+
+    - role: selinux_disable
+      when:
+        - apply_selinux_disable | default(false) | bool
+        - ansible_distribution == 'Rocky'
+
+    - role: iptables_setup
+      when:
+        - apply_iptables | default(false) | bool
+        - not (ansible_distribution == 'Rocky' and (ansible_distribution_major_version | int == 10))
+
+    - role: vsftpd_setup
+      when: apply_vsftpd | default(false) | bool

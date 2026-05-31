@@ -1,0 +1,17 @@
+---
+- name: Deploy history profile script
+  ansible.builtin.copy:
+    dest: /etc/profile.d/history_audit.sh
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      TMOUT=1200
+      export TMOUT
+      USER_IP=$(who -u am i 2>/dev/null | awk '{print $NF}' | sed -e 's/[()]//g')
+      if [ -z "$USER_IP" ]; then
+        USER_IP=$(hostname)
+      fi
+      HISTSIZE=100000000
+      export HISTSIZE
+      export HISTTIMEFORMAT="[%Y.%m.%d %H:%M:%S] [${USER_IP}] [${LOGNAME}] "

@@ -1,0 +1,99 @@
+---
+- name: Stop and disable ufw on Ubuntu
+  ansible.builtin.service:
+    name: ufw
+    state: stopped
+    enabled: false
+  failed_when: false
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Stop and disable firewalld on Rocky
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  failed_when: false
+  when: ansible_distribution == 'Rocky'
+
+
+
+- name: Wait for apt lock to be released on Ubuntu
+  ansible.builtin.shell: |
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+      echo "Waiting for apt lock..."
+      sleep 5
+    done
+  async: 600  # 최대 10분 대기
+  poll: 5     # 5초마다 확인
+  when: ansible_distribution == 'Ubuntu'
+
+
+
+- name: Install iptables persistence packages on Ubuntu
+  ansible.builtin.apt:
+    name:
+      - iptables-persistent
+      - netfilter-persistent
+    state: present
+    update_cache: true
+    # 락이 걸려있으면 풀릴 때까지 최대 300초(5분) 동안 대기합니다.
+    lock_timeout: 600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Install iptables-services on Rocky 8-9
+  ansible.builtin.shell: dnf install -y iptables iptables-services
+  changed_when: true # 멱등성을 위해 설치 명령이 돌았음을 표시
+  when:
+    - ansible_distribution == 'Rocky'
+    - ansible_distribution_major_version | int in [8, 9]
+
+- name: Ensure iptables config directory exists on Ubuntu
+  ansible.builtin.file:
+    path: /etc/iptables
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Deploy Ubuntu iptables rules
+  ansible.builtin.template:
+    src: ubuntu_rules.v4.j2
+    dest: /etc/iptables/rules.v4
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restore Ubuntu iptables
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Deploy Rocky iptables rules
+  ansible.builtin.template:
+    src: rocky_iptables.j2
+    dest: /etc/sysconfig/iptables
+    owner: root
+    group: root
+    mode: '0600'
+  notify: Restart Rocky iptables
+  when:
+    - ansible_distribution == 'Rocky'
+    - ansible_distribution_major_version | int in [8, 9]
+
+- name: Enable Ubuntu netfilter services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - netfilter-persistent
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Enable Rocky iptables service
+  ansible.builtin.service:
+    name: iptables
+    enabled: true
+    state: started
+  when:
+    - ansible_distribution == 'Rocky'
+    - ansible_distribution_major_version | int in [8, 9]

@@ -1,0 +1,9 @@
+---
+- name: Restore Ubuntu iptables
+  ansible.builtin.command: netfilter-persistent reload
+  changed_when: true
+
+- name: Restart Rocky iptables
+  ansible.builtin.service:
+    name: iptables
+    state: restarted

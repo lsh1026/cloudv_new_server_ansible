@@ -1,0 +1,17 @@
+anonymous_enable=NO
+chroot_local_user=YES
+allow_writeable_chroot=YES
+#chroot_list_enable=YES
+#(주석을 풀어서 YES로 사용한다면 /etc/vsftpd/chroot_list 에 상위폴더로 갈 수 있는 계정을 넣어준다.)
+#chroot_list_file=/etc/vsftpd/chroot_list
+listen=YES
+listen_ipv6=NO
+local_enable=YES
+write_enable=YES
+userlist_enable=YES
+userlist_deny=YES
+#userlist_file=/etc/vsftpd/user_list (기본값 = /etc/vsftpd/user_list)
+pasv_enable=YES
+pasv_promiscuous=YES
+pasv_min_port=50001
+pasv_max_port=50005

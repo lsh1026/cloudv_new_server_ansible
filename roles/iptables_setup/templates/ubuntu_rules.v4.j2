@@ -1,0 +1,18 @@
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:RH-Firewall-1-INPUT - [0:0]
+-A INPUT -j RH-Firewall-1-INPUT
+-A FORWARD -j RH-Firewall-1-INPUT
+-A RH-Firewall-1-INPUT -i lo -j ACCEPT
+-A RH-Firewall-1-INPUT -p icmp --icmp-type any -j ACCEPT
+-A RH-Firewall-1-INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+{% for port in iptables_tcp_ports | default([21,22,25,53,80,110,143,443,3306]) %}-A RH-Firewall-1-INPUT -m state --state NEW -m tcp -p tcp --dport {{ port }} -j ACCEPT
+{% endfor %}
+{% for port in iptables_udp_ports | default([53]) %}-A RH-Firewall-1-INPUT -m state --state NEW -m udp -p udp --dport {{ port }} -j ACCEPT
+{% endfor %}
+{% for range in iptables_tcp_ranges | default(['50001:50005']) %}-A RH-Firewall-1-INPUT -m state --state NEW -m tcp -p tcp --dport {{ range }} -j ACCEPT
+{% endfor %}
+-A RH-Firewall-1-INPUT -j REJECT --reject-with icmp-host-prohibited
+COMMIT
